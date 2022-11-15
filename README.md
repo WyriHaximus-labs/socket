@@ -23,6 +23,9 @@ handle multiple concurrent connections without blocking.
   * [ConnectionInterface](#connectioninterface)
     * [getRemoteAddress()](#getremoteaddress)
     * [getLocalAddress()](#getlocaladdress)
+  * [StartTlsConnectionInterface](#starttlsconnectioninterface)
+    * [enableEncryption()](#enableencryption)
+    * [disableEncryption()](#disableencryption)
 * [Server usage](#server-usage)
   * [ServerInterface](#serverinterface)
     * [connection event](#connection-event)
@@ -192,6 +195,37 @@ actually accepted this connection (such as a public or local interface).
 If your system has multiple interfaces (e.g. a WAN and a LAN interface),
 you can use this method to find out which interface was actually
 used for this connection.
+
+### StartTlsConnectionInterface
+
+The `StartTlsConnectionInterface` extends the [`ConnectionInterface`](#connectioninterface) and adds the ability of 
+enabling the TLS encryption on the connection when desired.
+
+#### enableEncryption
+
+When negotiated with the server when to start encrypting traffic using TLS you enable it by calling 
+`enableEncryption()` which returns a promise that resolve with a `StartTlsConnectionInterface` connection but now all 
+traffic back and forth will be encrypted.
+
+In the following example we ask the server if they want to encrypt the connection, and when it responds with `yes` we 
+enable the encryption:
+
+```php
+$connector = new React\Socket\Connector();
+$connector->connect('opportunistic+tls://example.com:5432/')->then(function (React\Socket\OpportunisticTlsConnectionInterface $startTlsConnection) {
+    $stream->write('let\'s encrypt?');
+
+    return React\Promise\Stream\first($startTlsConnection)->then(function ($data) use ($resolve, $reject, $startTlsConnection) {
+        if ($data === 'yes') {
+            return $startTlsConnection->enableEncryption();
+        }
+        
+        return $stream;
+    });
+})->then(function (React\Socket\ConnectionInterface $connection) {
+    $connection->write('Hello!');
+});
+```
 
 ## Server usage
 
@@ -1388,6 +1422,23 @@ $secureConnector = new React\Socket\SecureConnector($dnsConnector, null, array(
     'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT
 ));
 ```
+
+STARTTLS is supported by the secure connector by passing `starttls` into the context with `true` as value. This, when 
+connected, returns a [`StartTlsConnectionInterface`](#starttlsconnectioninterface) instead of the default 
+[`ConnectionInterface`](#connectioninterface) and won't be TLS encrypted from the start so you can enable the TLS 
+encryption on the connection after negotiating with the server.
+
+```php
+$secureConnector = new React\Socket\SecureConnector($dnsConnector, null, array(
+    'starttls' => true
+));
+$secureConnector->connect('example.com:5432')->then(function (StartTlsConnectionInterface $connection) {
+    return $connection->enableEncryption();
+})->then(function (StartTlsConnectionInterface $connection) {
+    $connection->write('Encrypted hi!');
+});
+```
+
 
 > Advanced usage: Internally, the `SecureConnector` relies on setting up the
 required *context options* on the underlying stream resource.

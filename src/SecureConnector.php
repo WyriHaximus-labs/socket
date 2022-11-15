@@ -42,11 +42,12 @@ final class SecureConnector implements ConnectorInterface
 
         $context = $this->context;
         $encryption = $this->streamEncryption;
+        $opportunisticTls = $parts['scheme'] === 'opportunistic+tls';
         $connected = false;
         /** @var \React\Promise\PromiseInterface $promise */
         $promise = $this->connector->connect(
             \str_replace('tls://', '', $uri)
-        )->then(function (ConnectionInterface $connection) use ($context, $encryption, $uri, &$promise, &$connected) {
+        )->then(function (ConnectionInterface $connection) use ($context, $encryption, $opportunisticTls, $uri, &$promise, &$connected) {
             // (unencrypted) TCP/IP connection succeeded
             $connected = true;
 
@@ -58,6 +59,10 @@ final class SecureConnector implements ConnectorInterface
             // set required SSL/TLS context options
             foreach ($context as $name => $value) {
                 \stream_context_set_option($connection->stream, 'ssl', $name, $value);
+            }
+
+            if ($opportunisticTls === true) {
+                return new OpportunisticTlsConnection($connection, $encryption, $uri);
             }
 
             // try to enable encryption
